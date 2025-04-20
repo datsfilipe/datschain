@@ -1,6 +1,7 @@
 mod account;
 mod chain;
 mod cryptography;
+mod storage;
 mod utils;
 
 use account::wallet::Wallet;
@@ -19,8 +20,8 @@ fn main() {
     let (public_key2, private_key2) = generate_keypair(None);
     let wallet2 = Wallet::new(private_key2, public_key2);
 
-    println!("wallet1: {}", to_hex(&wallet1.address));
-    println!("wallet2: {}", to_hex(&wallet2.address));
+    println!("wallet1: {}", wallet1.get_address());
+    println!("wallet2: {}", wallet2.get_address());
 
     let message = b"hello world";
     let signed_message = wallet1.sign(message);
