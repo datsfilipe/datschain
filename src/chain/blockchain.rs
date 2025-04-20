@@ -9,15 +9,16 @@ pub enum BlockchainError {
     InvalidProofOfWork,
 }
 
+#[allow(dead_code)]
 pub struct Blockchain {
     pub blocks: Vec<Block>,
     pub accounts: Vec<Wallet>,
-    pub current_difficulty_bits: u32,
+    pub current_difficulty_bits: u64,
     pub genesis_hash: Vec<u8>,
 }
 
 impl Blockchain {
-    pub fn new(current_difficulty_bits: u32) -> Self {
+    pub fn new(current_difficulty_bits: u64) -> Self {
         let genesis_block = Block::new(vec![], vec![], 0);
 
         Self {

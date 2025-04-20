@@ -1,8 +1,10 @@
+use bincode::{Decode, Encode};
+
 use crate::cryptography::hash::transform;
 use crate::utils::conversion::to_hex;
 use crate::utils::time::get_timestamp;
 
-#[derive(Clone)]
+#[derive(Debug, Clone, Encode, Decode)]
 pub struct Transaction {
     pub from: Vec<u8>,
     pub to: Vec<u8>,

@@ -1,4 +1,4 @@
-use rusty_leveldb::{DBIterator, LdbIterator, Options, DB};
+use rusty_leveldb::DB;
 
 struct Storage {
     db: DB,
@@ -14,8 +14,8 @@ impl Storage {
         }
     }
 
-    pub fn store(&mut self, key: &[u8], value: &[u8]) {
-        match self.db.put(key, value) {
+    pub fn store(&mut self, key: &[u8; 32], value: String) {
+        match self.db.put(key, value.as_bytes()) {
             Ok(_) => {}
             Err(e) => panic!("failed to store key: {}", e),
         }

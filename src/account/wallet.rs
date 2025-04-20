@@ -1,12 +1,15 @@
+use bincode::{Decode, Encode};
+
 use crate::cryptography::argon2d::hash;
 use crate::cryptography::signature::{get_private_key, sign};
 use crate::utils::conversion::public_key_to_address;
 use crate::utils::conversion::to_hex;
 
+#[derive(Encode, Decode, Clone)]
 pub struct Wallet {
     pub address: Vec<u8>,
     pub public_key: Vec<u8>,
-    private_key: Vec<u8>,
+    pub private_key: Vec<u8>,
 }
 
 impl Wallet {
@@ -23,7 +26,8 @@ impl Wallet {
     }
 
     pub fn get_hashed_pkey(&self) -> Vec<u8> {
-        match hash(&self.private_key) {
+        let string_pkey = to_hex(&self.private_key);
+        match hash(&string_pkey) {
             Ok(hash) => hash.as_bytes().to_vec(),
             Err(err) => panic!("{}", err),
         }

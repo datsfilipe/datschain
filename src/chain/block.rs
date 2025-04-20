@@ -1,3 +1,5 @@
+use bincode::{Decode, Encode};
+
 use crate::chain::blockchain::Blockchain;
 use crate::cryptography::hash::transform;
 use crate::utils::conversion::to_hex;
@@ -5,13 +7,13 @@ use crate::utils::time::get_timestamp;
 
 use super::transaction::Transaction;
 
-#[derive(Clone)]
+#[derive(Clone, Encode, Decode)]
 pub enum BlockStatus {
     Unfinalized,
     Finalized,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Encode, Decode)]
 pub struct Block {
     pub transactions: Vec<Transaction>,
     pub previous_hash: Vec<u8>,
@@ -60,7 +62,7 @@ impl Block {
         block_data
     }
 
-    fn meets_difficulty(&self, hash: &Vec<u8>, target_bits: u32) -> bool {
+    fn meets_difficulty(&self, hash: &Vec<u8>, target_bits: u64) -> bool {
         let mut leading_zeros = 0;
 
         for byte in hash {
@@ -80,8 +82,8 @@ impl Block {
         leading_zeros >= target_bits
     }
 
-    fn get_difficulty_target(&self, chain: &Blockchain) -> u32 {
-        const INITIAL_DIFFICULTY_BITS: u32 = 16;
+    fn get_difficulty_target(&self, chain: &Blockchain) -> u64 {
+        const INITIAL_DIFFICULTY_BITS: u64 = 16;
         const TARGET_BLOCK_TIME: u64 = 600; // 10 minutes in seconds
         const DIFFICULTY_ADJUSTMENT_INTERVAL: u64 = 2016; // ~2 weeks of blocks
 
@@ -152,7 +154,7 @@ impl Block {
         }
     }
 
-    pub fn verify(&self, target_bits: u32) -> bool {
+    pub fn verify(&self, target_bits: u64) -> bool {
         let block_data = Self::build_block_data(
             &self.transactions,
             &self.previous_hash,
