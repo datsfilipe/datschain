@@ -1,11 +1,12 @@
+use crate::cryptography::argon2d::hash;
 use crate::cryptography::signature::{get_private_key, sign};
 use crate::utils::conversion::public_key_to_address;
 use crate::utils::conversion::to_hex;
 
 pub struct Wallet {
     pub address: Vec<u8>,
+    pub public_key: Vec<u8>,
     private_key: Vec<u8>,
-    public_key: Vec<u8>,
 }
 
 impl Wallet {
@@ -19,6 +20,13 @@ impl Wallet {
 
     pub fn get_address(&self) -> String {
         to_hex(&self.address)
+    }
+
+    pub fn get_hashed_pkey(&self) -> Vec<u8> {
+        match hash(&self.private_key) {
+            Ok(hash) => hash.as_bytes().to_vec(),
+            Err(err) => panic!("{}", err),
+        }
     }
 
     pub fn sign(&self, message: &[u8]) -> Vec<u8> {
