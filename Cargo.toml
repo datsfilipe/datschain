@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 argon2 = "0.5.3"
+bincode = "2.0.1"
 ed25519-dalek = "2.1.1"
 keccak-asm = "0.1.4"
 rand = "0.9.1"
