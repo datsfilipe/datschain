@@ -1,0 +1,7 @@
+[package]
+name = "datschain"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+keccak-asm = "0.1.4"
