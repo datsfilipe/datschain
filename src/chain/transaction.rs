@@ -1,5 +1,5 @@
 use crate::cryptography::hash::transform;
-use crate::utils::conversion::to_string;
+use crate::utils::conversion::to_hex;
 use crate::utils::time::get_timestamp;
 
 #[derive(Clone)]
@@ -17,9 +17,9 @@ impl Transaction {
         let nonce = 0;
 
         let mut s = String::new();
-        s.push_str(&to_string(&from));
-        s.push_str(&to_string(&to));
-        s.push_str(&to_string(
+        s.push_str(&to_hex(&from));
+        s.push_str(&to_hex(&to));
+        s.push_str(&to_hex(
             &value
                 .iter()
                 .map(|value| value.to_be_bytes())
@@ -39,6 +39,6 @@ impl Transaction {
     }
 
     pub fn to_string(&self) -> String {
-        to_string(&self.hash)
+        to_hex(&self.hash)
     }
 }

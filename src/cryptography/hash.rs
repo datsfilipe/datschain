@@ -1,13 +1,13 @@
 use keccak_asm::Digest;
 use keccak_asm::Keccak256;
 
-use crate::utils::conversion::to_string;
+use crate::utils::conversion::to_hex;
 
 pub fn transform(input: &String) -> String {
     let mut keccak = Keccak256::new();
     keccak.update(input.as_bytes());
     let result = keccak.finalize();
-    to_string(&result)
+    to_hex(&result)
 }
 
 pub fn verify(input: &String, hash: String) -> bool {

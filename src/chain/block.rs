@@ -1,6 +1,6 @@
 use crate::chain::blockchain::Blockchain;
 use crate::cryptography::hash::transform;
-use crate::utils::conversion::to_string;
+use crate::utils::conversion::to_hex;
 use crate::utils::time::get_timestamp;
 
 use super::transaction::Transaction;
@@ -45,7 +45,7 @@ impl Block {
     ) -> String {
         let mut block_data = String::new();
 
-        block_data.push_str(&to_string(previous_hash));
+        block_data.push_str(&to_hex(previous_hash));
 
         let transactions_str = transactions
             .iter()
