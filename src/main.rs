@@ -8,11 +8,16 @@ use account::wallet::Wallet;
 use chain::block::Block;
 use chain::blockchain::Blockchain;
 use chain::transaction::Transaction;
+use cryptography::hash::transform;
 use cryptography::signature::generate_keypair;
-use utils::conversion::to_hex;
+use storage::tree::Tree;
+use utils::conversion::{hash_to_32bit_array, to_hex};
 
 fn main() {
     let mut blockchain = Blockchain::new(1);
+    let mut diffictulty_tree = Tree::new("difficulty".to_string());
+    diffictulty_tree.insert(hash_to_32bit_array(transform(&String::from("0"))));
+    diffictulty_tree.commit();
 
     let (public_key1, private_key1) = generate_keypair(None);
     let wallet1 = Wallet::new(private_key1, public_key1);
@@ -35,6 +40,16 @@ fn main() {
 
     block.mine(&mut blockchain);
     println!("block: {}", to_hex(&block.hash));
+
+    diffictulty_tree.insert(hash_to_32bit_array(transform(&String::from(format!(
+        "{}",
+        blockchain.current_difficulty_bits
+    )))));
+    diffictulty_tree.commit();
+
+    let leaves = diffictulty_tree.get_leaves();
+    let proof = diffictulty_tree.proof(leaves);
+    println!("proof: {}", proof);
 
     for block in blockchain.blocks.iter() {
         println!("block: {}", to_hex(&block.hash));
