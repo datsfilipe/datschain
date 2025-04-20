@@ -13,7 +13,7 @@ fn main() {
     let verify = verify(&message, data);
     println!("{:?}", verify);
 
-    let (secret_key, public_key) = signature::generate_keypair();
+    let (secret_key, public_key) = signature::generate_keypair(None);
     println!("{:?}", to_hex(&secret_key));
     println!("{:?}", to_hex(&public_key));
 
