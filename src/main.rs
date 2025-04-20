@@ -3,30 +3,39 @@ mod chain;
 mod cryptography;
 mod utils;
 
-use cryptography::hash::{transform, verify};
-use cryptography::signature;
+use account::wallet::Wallet;
+use chain::block::Block;
+use chain::blockchain::Blockchain;
+use chain::transaction::Transaction;
+use cryptography::signature::generate_keypair;
 use utils::conversion::to_hex;
 
 fn main() {
-    let message = String::from("hello world");
-    let data = transform(&message);
-    println!("{:?}", "0x".to_owned() + &data);
+    let mut blockchain = chain::blockchain::Blockchain::new(1);
 
-    let verify = verify(&message, data);
-    println!("{:?}", verify);
+    let (public_key1, private_key1) = generate_keypair(None);
+    let wallet1 = Wallet::new(private_key1, public_key1);
 
-    let (secret_key, public_key) = signature::generate_keypair(None);
-    println!("{:?}", to_hex(&secret_key));
-    println!("{:?}", to_hex(&public_key));
+    let (public_key2, private_key2) = generate_keypair(None);
+    let wallet2 = Wallet::new(private_key2, public_key2);
 
-    let bytes = message.into_bytes();
-    let signature = signature::sign(&bytes, &secret_key.try_into().unwrap());
-    println!("{:?}", to_hex(&signature));
+    println!("wallet1: {}", to_hex(&wallet1.address));
+    println!("wallet2: {}", to_hex(&wallet2.address));
 
-    let verify = signature::verify(
-        &bytes,
-        &signature.try_into().unwrap(),
-        &public_key.try_into().unwrap(),
-    );
-    println!("{:?}", verify);
+    let message = b"hello world";
+    let signed_message = wallet1.sign(message);
+    println!("signed_message: {}", to_hex(&signed_message));
+
+    let tx = Transaction::new(&wallet1.address, &wallet2.address, vec![100]);
+    println!("tx: {}", tx.to_string());
+
+    let mut block = Block::new(vec![tx], blockchain.genesis_hash.clone(), 0);
+    println!("block: {}", to_hex(&block.hash));
+
+    block.mine(&mut blockchain);
+    println!("block: {}", to_hex(&block.hash));
+
+    for block in blockchain.blocks.iter() {
+        println!("block: {}", to_hex(&block.hash));
+    }
 }

@@ -13,7 +13,7 @@ pub struct Blockchain {
     pub blocks: Vec<Block>,
     pub accounts: Vec<Wallet>,
     pub current_difficulty_bits: u32,
-    genesis_hash: Vec<u8>,
+    pub genesis_hash: Vec<u8>,
 }
 
 impl Blockchain {

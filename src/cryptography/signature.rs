@@ -4,12 +4,16 @@ use ed25519_dalek::{
 };
 use rand::Rng;
 
-pub fn generate_keypair(private_key: Option<&[u8; SECRET_KEY_LENGTH]>) -> (Vec<u8>, Vec<u8>) {
+pub fn get_private_key(private_key: Option<&[u8; SECRET_KEY_LENGTH]>) -> SigningKey {
     let seed = match private_key {
-        Some(private_key) => private_key,
-        None => &rand::rng().random::<[u8; SECRET_KEY_LENGTH]>(),
+        Some(private_key) => private_key.clone(),
+        None => rand::rng().random::<[u8; SECRET_KEY_LENGTH]>(),
     };
-    let signing_key = SigningKey::from_bytes(&seed);
+    SigningKey::from_bytes(&seed)
+}
+
+pub fn generate_keypair(private_key: Option<&[u8; SECRET_KEY_LENGTH]>) -> (Vec<u8>, Vec<u8>) {
+    let signing_key = get_private_key(private_key);
     let verifying_key = signing_key.verifying_key();
     let secret_key = signing_key.to_bytes().to_vec();
     let public_key = verifying_key.to_bytes().to_vec();

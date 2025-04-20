@@ -120,6 +120,7 @@ impl Block {
     }
 
     pub fn mine(&mut self, blockchain: &mut Blockchain) -> bool {
+        println!("Mining block {}", self.height);
         let target_bits = self.get_difficulty_target(blockchain);
         let max_attempts = 1_000_000;
 

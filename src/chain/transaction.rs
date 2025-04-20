@@ -13,7 +13,7 @@ pub struct Transaction {
 }
 
 impl Transaction {
-    pub fn new(from: Vec<u8>, to: Vec<u8>, value: Vec<u64>) -> Self {
+    pub fn new(from: &Vec<u8>, to: &Vec<u8>, value: Vec<u64>) -> Self {
         let nonce = 0;
 
         let mut s = String::new();
@@ -30,8 +30,8 @@ impl Transaction {
 
         Self {
             hash: transform(&s).into_bytes(),
-            from,
-            to,
+            from: from.clone(),
+            to: to.clone(),
             value,
             nonce,
             timestamp: get_timestamp(),
