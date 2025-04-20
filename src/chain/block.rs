@@ -5,11 +5,13 @@ use crate::utils::time::get_timestamp;
 
 use super::transaction::Transaction;
 
+#[derive(Clone)]
 pub enum BlockStatus {
     Unfinalized,
     Finalized,
 }
 
+#[derive(Clone)]
 pub struct Block {
     pub transactions: Vec<Transaction>,
     pub previous_hash: Vec<u8>,
@@ -117,7 +119,7 @@ impl Block {
         new_difficulty
     }
 
-    pub fn mine(&mut self, blockchain: &Blockchain) -> bool {
+    pub fn mine(&mut self, blockchain: &mut Blockchain) -> bool {
         let target_bits = self.get_difficulty_target(blockchain);
         let max_attempts = 1_000_000;
 
@@ -133,7 +135,7 @@ impl Block {
             let hash = transform(&block_data).into_bytes();
             if self.meets_difficulty(&hash, target_bits) {
                 self.hash = hash;
-                self.finalize();
+                self.finalize(self.clone(), blockchain);
                 return true;
             }
         }
@@ -141,8 +143,12 @@ impl Block {
         false
     }
 
-    fn finalize(&mut self) {
+    fn finalize(&mut self, copy: Block, blockchain: &mut Blockchain) {
         self.status = BlockStatus::Finalized;
+        match blockchain.add_block(copy) {
+            Ok(_) => (),
+            Err(e) => println!("{:?}", e),
+        }
     }
 
     pub fn verify(&self, target_bits: u32) -> bool {
@@ -161,4 +167,3 @@ impl Block {
         self.meets_difficulty(&hash, target_bits)
     }
 }
-

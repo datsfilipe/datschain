@@ -2,6 +2,7 @@ use crate::cryptography::hash::transform;
 use crate::utils::conversion::to_string;
 use crate::utils::time::get_timestamp;
 
+#[derive(Clone)]
 pub struct Transaction {
     pub from: Vec<u8>,
     pub to: Vec<u8>,
