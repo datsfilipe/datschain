@@ -45,6 +45,6 @@ impl Wallet {
         data.extend_from_slice(&self.address);
         data.extend_from_slice(&to.address);
         data.extend_from_slice(&value.to_be_bytes());
-        data
+        self.sign(&data)
     }
 }
