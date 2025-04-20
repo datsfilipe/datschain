@@ -1,12 +1,8 @@
-pub struct Wallet {
-    address: Vec<u8>,
-    public_key: Vec<u8>,
-}
+use crate::utils::conversion::public_key_to_address;
 
-fn public_key_to_address(public_key: &Vec<u8>) -> Vec<u8> {
-    let mut address = vec![0u8; 20];
-    address.copy_from_slice(&public_key[0..20]);
-    address
+pub struct Wallet {
+    pub address: Vec<u8>,
+    public_key: Vec<u8>,
 }
 
 impl Wallet {
