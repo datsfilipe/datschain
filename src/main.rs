@@ -1,11 +1,13 @@
 mod client;
 
+fn get_listen_addr() -> String {
+    std::env::var("LISTEN_ADDR").unwrap_or_else(|_| "127.0.0.1:8080".to_string())
+}
+
 #[tokio::main]
 async fn main() {
-    let addr = "127.0.0.1:8080";
-
     let listener_handle = tokio::spawn(async move {
-        if let Err(e) = client::network::start_network_listener(addr).await {
+        if let Err(e) = client::network::start_network_listener(&get_listen_addr()).await {
             eprintln!("Listener failed: {}", e);
         }
     });
@@ -13,7 +15,7 @@ async fn main() {
     tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
 
     let connector_handle = tokio::spawn(async move {
-        if let Err(e) = client::network::start_network_connector(addr).await {
+        if let Err(e) = client::network::start_network_connector(&get_listen_addr()).await {
             eprintln!("Connector failed: {}", e);
         }
     });
