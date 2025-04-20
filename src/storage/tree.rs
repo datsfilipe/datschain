@@ -1,17 +1,9 @@
 use rs_merkle::{algorithms::Keccak256, MerkleProof, MerkleTree};
 
+#[allow(dead_code)]
 pub struct Tree {
     identifier: String,
     tree: MerkleTree<Keccak256>,
-}
-
-fn is_equal(a: &[u8; 32], b: &[u8; 32]) -> bool {
-    for i in 0..32 {
-        if a[i] != b[i] {
-            return false;
-        }
-    }
-    true
 }
 
 impl Tree {
@@ -37,31 +29,28 @@ impl Tree {
         }
     }
 
-    pub fn proof(&self, leaves: Vec<[u8; 32]>) -> bool {
-        let root = self.tree.root().ok_or(false);
-        let stored_leaves = self.tree.leaves().ok_or(false);
-        if stored_leaves.is_err() {
-            return false;
-        }
-        let stored_leaves = stored_leaves.unwrap();
+    pub fn generate_proof_bytes(&self, indices: &[usize]) -> Vec<u8> {
+        self.tree.proof(indices).to_bytes()
+    }
 
-        let mut indices = Vec::new();
-        for leaf in &leaves {
-            if !stored_leaves.contains(&leaf) {
-                return false;
-            }
-            indices.push(
-                stored_leaves
-                    .iter()
-                    .position(|x| is_equal(x, &leaf))
-                    .unwrap(),
-            );
+    pub fn verify_proof_bytes(
+        &self,
+        leaves: &[[u8; 32]],
+        indices: &[usize],
+        proof_bytes: &[u8],
+    ) -> bool {
+        let root = match self.tree.root() {
+            Some(r) => r,
+            None => return false,
+        };
+        // real total leaf count at proof time:
+        let total_leaves = match self.tree.leaves() {
+            Some(ref v) => v.len(),
+            None => return false,
+        };
+        if let Ok(proof) = MerkleProof::<Keccak256>::from_bytes(proof_bytes) {
+            return proof.verify(root, indices, leaves, total_leaves);
         }
-
-        let proof = MerkleProof::<Keccak256>::try_from(self.tree.proof(&indices).to_bytes());
-        match proof {
-            Ok(proof) => proof.verify(root.unwrap(), &indices, &leaves, leaves.len()),
-            Err(_) => false,
-        }
+        false
     }
 }
