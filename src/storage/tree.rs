@@ -43,13 +43,24 @@ impl Tree {
             Some(r) => r,
             None => return false,
         };
-        // real total leaf count at proof time:
+
         let total_leaves = match self.tree.leaves() {
             Some(ref v) => v.len(),
             None => return false,
         };
         if let Ok(proof) = MerkleProof::<Keccak256>::from_bytes(proof_bytes) {
             return proof.verify(root, indices, leaves, total_leaves);
+        }
+        false
+    }
+
+    pub fn get_root(&self) -> Option<[u8; 32]> {
+        self.tree.root()
+    }
+
+    pub fn verify_root(&self, claimed_root: [u8; 32]) -> bool {
+        if let Some(actual_root) = self.tree.root() {
+            return actual_root == claimed_root;
         }
         false
     }

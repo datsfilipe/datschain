@@ -85,6 +85,38 @@ impl Ledger {
         bytes_key
     }
 
+    pub async fn commit_with_identifier(&mut self, tree_identifier: &str, key: [u8; 32]) {
+        match tree_identifier {
+            "mining" => {
+                self.mining_tree.insert(key);
+                self.mining_tree.commit();
+            }
+            "accounts" => {
+                self.accounts_tree.insert(key);
+                self.accounts_tree.commit();
+            }
+            "blocks" => {
+                self.blocks_tree.insert(key);
+                self.blocks_tree.commit();
+            }
+            _ => {}
+        }
+    }
+
+    pub async fn sync_client_block(&mut self, key: [u8; 32], entry: String, tree_identifier: &str) {
+        self.commit_with_identifier(tree_identifier, key).await;
+
+        let entry = LedgerEntry {
+            key,
+            value: entry.into_bytes(),
+            // TODO: add proof from the otehr client
+            proof: None,
+            version: 0,
+        };
+
+        self.entries.insert(key, entry);
+    }
+
     pub fn store_block(&mut self, block: Block) -> [u8; 32] {
         let mut serialized = vec![0u8; 256];
         encode_into_slice(&block, &mut serialized, config::standard()).unwrap();
@@ -194,5 +226,10 @@ impl Ledger {
         } else {
             format!("{{bytes:{:?}}}", value)
         }
+    }
+
+    pub fn get_latest_block_key(&self) -> Option<[u8; 32]> {
+        let leaves = self.blocks_tree.get_leaves();
+        leaves.last().copied()
     }
 }
