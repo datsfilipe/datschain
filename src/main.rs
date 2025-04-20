@@ -32,7 +32,7 @@ fn main() {
     let signed_message = wallet1.sign(message);
     println!("signed_message: {}", to_hex(&signed_message));
 
-    let tx = Transaction::new(&wallet1.address, &wallet2.address, vec![100]);
+    let tx = Transaction::new(&wallet1.address, &wallet2.address, vec![100], None);
     println!("tx: {}", tx.to_string());
 
     let mut block = Block::new(vec![tx], blockchain.genesis_hash.clone(), 0);

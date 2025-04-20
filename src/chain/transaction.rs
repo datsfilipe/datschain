@@ -13,8 +13,11 @@ pub struct Transaction {
 }
 
 impl Transaction {
-    pub fn new(from: &Vec<u8>, to: &Vec<u8>, value: Vec<u64>) -> Self {
-        let nonce = 0;
+    pub fn new(from: &Vec<u8>, to: &Vec<u8>, value: Vec<u64>, nonce: Option<u64>) -> Self {
+        let nonce = match nonce {
+            Some(nonce) => nonce,
+            None => 0,
+        };
 
         let mut s = String::new();
         s.push_str(&to_hex(&from));
