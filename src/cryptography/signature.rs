@@ -2,9 +2,11 @@ use ed25519_dalek::{
     ed25519::signature::SignerMut, Signature, SigningKey, VerifyingKey, PUBLIC_KEY_LENGTH,
     SECRET_KEY_LENGTH,
 };
+use rand::Rng;
 
 pub fn generate_keypair() -> (Vec<u8>, Vec<u8>) {
-    let signing_key = SigningKey::from_bytes(&[0u8; SECRET_KEY_LENGTH]);
+    let seed = rand::rng().random::<[u8; 32]>();
+    let signing_key = SigningKey::from_bytes(&seed);
     let verifying_key = signing_key.verifying_key();
     let secret_key = signing_key.to_bytes().to_vec();
     let public_key = verifying_key.to_bytes().to_vec();
