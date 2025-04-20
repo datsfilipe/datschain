@@ -11,7 +11,7 @@ use cryptography::signature::generate_keypair;
 use utils::conversion::to_hex;
 
 fn main() {
-    let mut blockchain = chain::blockchain::Blockchain::new(1);
+    let mut blockchain = Blockchain::new(1);
 
     let (public_key1, private_key1) = generate_keypair(None);
     let wallet1 = Wallet::new(private_key1, public_key1);
