@@ -1,5 +1,6 @@
 use crate::cryptography::signature::{get_private_key, sign};
 use crate::utils::conversion::public_key_to_address;
+use crate::utils::conversion::to_hex;
 
 pub struct Wallet {
     pub address: Vec<u8>,
@@ -14,6 +15,10 @@ impl Wallet {
             private_key,
             public_key,
         }
+    }
+
+    pub fn get_address(&self) -> String {
+        to_hex(&self.address)
     }
 
     pub fn sign(&self, message: &[u8]) -> Vec<u8> {
