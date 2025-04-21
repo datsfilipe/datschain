@@ -112,22 +112,28 @@ impl Ledger {
     pub async fn sync_client_block(
         &mut self,
         key: [u8; 32],
-        entry: String,
+        entry: Vec<u8>,
         tree_identifier: &str,
         storage: &mut Storage,
-    ) {
+    ) -> Option<bool> {
         let proof = self
             .commit_with_identifier(key, tree_identifier, storage)
             .await;
 
-        let entry = LedgerEntry {
-            key,
-            proof,
-            value: entry.into_bytes(),
-            version: 0,
-        };
+        if let Some(proof) = proof {
+            let entry = LedgerEntry {
+                key,
+                proof: Some(proof),
+                value: entry,
+                version: 0,
+            };
 
-        self.entries.insert(key, entry);
+            self.entries.insert(key, entry);
+
+            Some(true)
+        } else {
+            None
+        }
     }
 
     pub fn verify_entry(&self, key: &[u8; 32]) -> bool {

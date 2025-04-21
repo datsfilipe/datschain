@@ -9,10 +9,10 @@ use crate::utils::conversion::to_hex;
 pub async fn process_peer_state(
     ledger: &mut Ledger,
     storage: &mut Storage,
-    data: &[u8],
+    data: Vec<u8>,
     identifier: &str,
 ) -> Result<[u8; 32], Box<dyn Error + Send + Sync>> {
-    let new_state: DecodedData = match ledger.decode_value(data) {
+    let new_state: DecodedData = match ledger.decode_value(&data) {
         Ok(block) => block,
         Err(e) => return Err(format!("Failed to decode block: {}", e).into()),
     };
@@ -28,7 +28,7 @@ pub async fn process_peer_state(
 
     let key = ledger.get_key(&new_state);
     match ledger
-        .commit_with_identifier(key, identifier, storage)
+        .sync_client_block(key, data, identifier, storage)
         .await
     {
         Some(_) => {
@@ -45,7 +45,7 @@ pub async fn handle_peer_message(
     data: Vec<u8>,
     identifier: &str,
 ) -> Result<String, Box<dyn Error + Send + Sync>> {
-    match process_peer_state(ledger, storage, &data, identifier).await {
+    match process_peer_state(ledger, storage, data, identifier).await {
         Ok(key) => Ok(format!("Data accepted: {}", to_hex(&key))),
         Err(e) => Err(format!("Rejected block: {}", e).into()),
     }
