@@ -1,7 +1,17 @@
 use base64::{engine, Engine};
+use futures::lock::Mutex;
 use std::error::Error;
+use std::sync::Arc;
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt, BufReader, ReadHalf, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
+
+use crate::client::peer::receive_from_peer;
+use crate::storage::{ledger::Ledger, level_db::Storage};
+
+struct SharedState {
+    ledger: Mutex<Ledger>,
+    storage: Mutex<Storage>,
+}
 
 async fn send_message(writer: &mut WriteHalf<TcpStream>, message: &str) -> io::Result<()> {
     let engine = engine::general_purpose::STANDARD;
@@ -43,7 +53,10 @@ async fn read_message(reader: &mut BufReader<ReadHalf<TcpStream>>) -> io::Result
     }
 }
 
-async fn handle_server_connection(stream: TcpStream) -> Result<(), Box<dyn Error>> {
+async fn handle_server_connection(
+    stream: TcpStream,
+    state: Arc<SharedState>,
+) -> Result<(), Box<dyn Error>> {
     let peer_addr = stream.peer_addr()?;
     println!("Server: Connection established with: {}", peer_addr);
 
@@ -58,7 +71,44 @@ async fn handle_server_connection(stream: TcpStream) -> Result<(), Box<dyn Error
             Ok(Some(message)) => {
                 println!("Server received from {}: {}", peer_addr, message);
 
-                if !message.starts_with("Echo:") {
+                if message.starts_with("blocks:")
+                    || message.starts_with("accounts:")
+                    || message.starts_with("mining:")
+                {
+                    let identifier = message.split(':').next().unwrap();
+                    let data = message
+                        .strip_prefix(format!("{}:", identifier).as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    if data.is_empty() {
+                        continue;
+                    }
+
+                    let mut ledger = state.ledger.lock().await;
+                    let mut storage = state.storage.lock().await;
+
+                    match receive_from_peer(data, &mut ledger, &mut storage, &identifier).await {
+                        Ok(response) => {
+                            if let Err(e) = send_message(&mut writer, &response).await {
+                                eprintln!(
+                                    "Server: Failed to send block response to {}: {}",
+                                    peer_addr, e
+                                );
+                                break;
+                            }
+                        }
+                        Err(e) => {
+                            let error_msg = format!("Error processing block: {}", e);
+                            if let Err(e) = send_message(&mut writer, &error_msg).await {
+                                eprintln!(
+                                    "Server: Failed to send error response to {}: {}",
+                                    peer_addr, e
+                                );
+                                break;
+                            }
+                        }
+                    }
+                } else if !message.starts_with("Echo:") {
                     let response = format!("Echo: {}", message);
                     if let Err(e) = send_message(&mut writer, &response).await {
                         eprintln!("Server: Failed to send response to {}: {}", peer_addr, e);

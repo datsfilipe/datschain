@@ -16,13 +16,13 @@ pub struct Ledger {
 
 #[allow(dead_code)]
 pub struct LedgerEntry {
-    key: [u8; 32],
-    value: Vec<u8>,
-    proof: Option<LedgerProof>,
-    version: u64,
+    pub key: [u8; 32],
+    pub value: Vec<u8>,
+    pub proof: Option<LedgerProof>,
+    pub version: u64,
 }
 
-struct LedgerProof {
+pub struct LedgerProof {
     tree_identifier: String,
     proof_indices: Vec<usize>,
     proof_data: Vec<u8>,
@@ -99,6 +99,15 @@ impl Ledger {
                 self.blocks_tree.insert(key);
                 self.blocks_tree.commit();
             }
+            _ => {}
+        }
+    }
+
+    pub fn rollback_with_identifier(&mut self, tree_identifier: &str, key: [u8; 32]) {
+        match tree_identifier {
+            "mining" => self.mining_tree.rollback(),
+            "accounts" => self.accounts_tree.rollback(),
+            "blocks" => self.blocks_tree.rollback(),
             _ => {}
         }
     }

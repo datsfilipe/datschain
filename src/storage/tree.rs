@@ -33,6 +33,10 @@ impl Tree {
         self.tree.proof(indices).to_bytes()
     }
 
+    pub fn rollback(&mut self) {
+        self.tree.rollback();
+    }
+
     pub fn verify_proof_bytes(
         &self,
         leaves: &[[u8; 32]],
