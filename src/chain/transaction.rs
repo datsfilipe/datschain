@@ -6,6 +6,7 @@ use crate::utils::time::get_timestamp;
 
 #[derive(Debug, Clone, Encode, Decode)]
 pub struct Transaction {
+    pub signer: Vec<u8>,
     pub from: Vec<u8>,
     pub to: Vec<u8>,
     pub value: Vec<u64>,
@@ -15,7 +16,13 @@ pub struct Transaction {
 }
 
 impl Transaction {
-    pub fn new(from: &Vec<u8>, to: &Vec<u8>, value: Vec<u64>, nonce: Option<u64>) -> Self {
+    pub fn new(
+        from: &Vec<u8>,
+        to: &Vec<u8>,
+        value: Vec<u64>,
+        nonce: Option<u64>,
+        signer: &Vec<u8>,
+    ) -> Self {
         let nonce = match nonce {
             Some(nonce) => nonce,
             None => 0,
@@ -34,6 +41,7 @@ impl Transaction {
         s.push_str(&nonce.to_string());
 
         Self {
+            signer: signer.clone(),
             hash: transform(&s).into_bytes(),
             from: from.clone(),
             to: to.clone(),
