@@ -13,4 +13,6 @@ keccak-asm = "0.1.4"
 rand = "0.9.1"
 rs_merkle = { version = "1.5.0", features = ["keccak256"] }
 rusty-leveldb = "3.0.2"
+serde = { version = "1.0.219", features = ["derive"] }
 tokio = { version = "1.44.2", features = ["full"] }
+warp = "0.3.7"
