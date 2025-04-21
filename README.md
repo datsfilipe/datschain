@@ -3,7 +3,7 @@
 - Cryptographic hash: keccak256;
 - Digital signature: Ed25519;
 - Immutable ledger: merkle trie (LevelDB as the underlying storage);
-- P2P network: with libp2p;
+- P2P network: with tokio and etc;
 - Consensus algorithm: Proof of Work (PoW);
 - Block validation: Mining;
 
