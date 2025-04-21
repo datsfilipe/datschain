@@ -1,5 +1,6 @@
 use bincode::{Decode, Encode};
 
+use crate::chain::{block_manager::BlockManager, blockchain::Blockchain};
 use crate::cryptography::hash::transform;
 use crate::utils::conversion::to_hex;
 use crate::utils::time::get_timestamp;
@@ -22,6 +23,8 @@ impl Transaction {
         value: Vec<u64>,
         nonce: Option<u64>,
         signer: &Vec<u8>,
+        blockchain: &mut Blockchain,
+        block_manager: &mut BlockManager,
     ) -> Self {
         let nonce = match nonce {
             Some(nonce) => nonce,
@@ -40,7 +43,7 @@ impl Transaction {
         ));
         s.push_str(&nonce.to_string());
 
-        Self {
+        let tx = Self {
             signer: signer.clone(),
             hash: transform(&s).into_bytes(),
             from: from.clone(),
@@ -48,7 +51,10 @@ impl Transaction {
             value,
             nonce,
             timestamp: get_timestamp(),
-        }
+        };
+
+        block_manager.add_transaction(blockchain, tx.clone());
+        tx
     }
 
     pub fn to_string(&self) -> String {

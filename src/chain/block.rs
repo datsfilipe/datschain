@@ -1,19 +1,19 @@
 use bincode::{Decode, Encode};
 
+use crate::chain::block_manager::BlockManager;
 use crate::chain::blockchain::Blockchain;
+use crate::chain::transaction::Transaction;
 use crate::cryptography::hash::transform;
 use crate::utils::conversion::to_hex;
 use crate::utils::time::get_timestamp;
 
-use super::transaction::Transaction;
-
-#[derive(Clone, Encode, Decode)]
+#[derive(Debug, Clone, Encode, Decode)]
 pub enum BlockStatus {
     Unfinalized,
     Finalized,
 }
 
-#[derive(Clone, Encode, Decode)]
+#[derive(Debug, Clone, Encode, Decode)]
 pub struct Block {
     pub transactions: Vec<Transaction>,
     pub previous_hash: Vec<u8>,
@@ -121,7 +121,7 @@ impl Block {
         new_difficulty
     }
 
-    pub fn mine(&mut self, blockchain: &mut Blockchain) -> bool {
+    pub fn mine(&mut self, blockchain: &mut Blockchain, block_manager: &mut BlockManager) -> bool {
         println!("Mining block {}", self.height);
         let target_bits = self.get_difficulty_target(blockchain);
         let max_attempts = 1_000_000;
@@ -138,7 +138,7 @@ impl Block {
             let hash = transform(&block_data).into_bytes();
             if self.meets_difficulty(&hash, target_bits) {
                 self.hash = hash;
-                self.finalize(self.clone(), blockchain);
+                self.finalize(self.clone(), blockchain, block_manager);
                 return true;
             }
         }
@@ -146,10 +146,24 @@ impl Block {
         false
     }
 
-    fn finalize(&mut self, copy: Block, blockchain: &mut Blockchain) {
+    pub fn add_transaction(&mut self, transaction: Transaction) -> bool {
+        if matches!(self.status, BlockStatus::Finalized) {
+            return false;
+        }
+
+        self.transactions.push(transaction);
+        true
+    }
+
+    fn finalize(
+        &mut self,
+        copy: Block,
+        blockchain: &mut Blockchain,
+        blocK_manager: &mut BlockManager,
+    ) {
         self.status = BlockStatus::Finalized;
         match blockchain.add_block(copy) {
-            Ok(_) => (),
+            Ok(_) => blocK_manager.remove_unfinalized_block(self.height),
             Err(e) => println!("{:?}", e),
         }
     }

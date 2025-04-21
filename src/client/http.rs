@@ -4,6 +4,7 @@ use warp::{Filter, Rejection, Reply};
 
 use crate::account::wallet::Wallet;
 use crate::client::network::SharedState;
+use crate::storage::ledger::DecodedData;
 
 #[derive(Deserialize)]
 pub struct SendDataRequest {
@@ -32,7 +33,19 @@ async fn process_connect_request(
         request.public_key.as_bytes().to_vec(),
     );
     let address = wallet.get_address();
-    let key = state.ledger.lock().await.store_account(wallet);
+    let key = state
+        .ledger
+        .lock()
+        .await
+        .get_key(&DecodedData::Accounts(wallet));
+
+    let mut storage = state.storage.lock().await;
+    state
+        .ledger
+        .lock()
+        .await
+        .commit_with_identifier(key, "accounts", &mut *storage)
+        .await;
     let formatted_entry = state.ledger.lock().await.format_entry(&key);
 
     state

@@ -1,5 +1,10 @@
+use std::sync::Arc;
+use tokio;
+
 use crate::account::wallet::Wallet;
 use crate::chain::block::{Block, BlockStatus};
+
+use super::block_manager::BlockManager;
 
 #[derive(Debug)]
 pub enum BlockchainError {
@@ -61,5 +66,45 @@ impl Blockchain {
 
     pub fn get_block_by_height(&self, height: u64) -> Option<&Block> {
         self.blocks.get(height as usize)
+    }
+
+    pub fn start_mining_service_async(
+        blockchain: Arc<tokio::sync::Mutex<Blockchain>>,
+        block_manager: Arc<tokio::sync::Mutex<BlockManager>>,
+    ) -> tokio::task::JoinHandle<()> {
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+            loop {
+                interval.tick().await;
+                let maybe_block = {
+                    let mut bc = blockchain.lock().await;
+                    let mut bm = block_manager.lock().await;
+                    bm.process_block_creation(&mut bc)
+                };
+
+                if let Some(mut block) = maybe_block {
+                    let height = block.height;
+                    println!("Starting mining for block {}", height);
+
+                    let bc_clone = Arc::clone(&blockchain);
+                    let bm_clone = Arc::clone(&block_manager);
+                    let mine_handle = tokio::task::spawn_blocking(move || {
+                        let mut guard = tokio::sync::Mutex::blocking_lock_owned(bc_clone);
+                        let mut bm = tokio::sync::Mutex::blocking_lock_owned(bm_clone);
+                        block.mine(&mut *guard, &mut *bm)
+                    });
+
+                    match mine_handle.await {
+                        Ok(true) => {
+                            println!("Mined block {}", height);
+                            let mut bm = block_manager.lock().await;
+                            bm.remove_unfinalized_block(height);
+                        }
+                        Ok(false) => eprintln!("Proof‑of‑work failed for {}", height),
+                        Err(e) => eprintln!("Mining thread panicked: {}", e),
+                    }
+                }
+            }
+        })
     }
 }

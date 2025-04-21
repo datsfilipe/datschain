@@ -1,6 +1,5 @@
 use bincode::{Decode, Encode};
 
-use crate::cryptography::argon2d::hash;
 use crate::cryptography::signature::{get_private_key, sign};
 use crate::utils::conversion::public_key_to_address;
 use crate::utils::conversion::to_hex;
@@ -25,14 +24,7 @@ impl Wallet {
         to_hex(&self.address)
     }
 
-    pub fn get_hashed_pkey(&self) -> Vec<u8> {
-        let string_pkey = to_hex(&self.private_key);
-        match hash(&string_pkey) {
-            Ok(hash) => hash.as_bytes().to_vec(),
-            Err(err) => panic!("{}", err),
-        }
-    }
-
+    #[allow(dead_code)] // TODO: this can be used by a contract interpreter
     pub fn sign(&self, message: &[u8]) -> Vec<u8> {
         sign(
             message,

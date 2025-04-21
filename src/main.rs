@@ -1,3 +1,4 @@
+use chain::blockchain::Blockchain;
 use std::{net::SocketAddr, sync::Arc};
 use tokio::sync::Mutex;
 
@@ -30,6 +31,9 @@ fn get_database_path() -> String {
 
 #[tokio::main]
 async fn main() {
+    let blockchain = Arc::new(Mutex::new(chain::blockchain::Blockchain::new(0)));
+    let block_manager = Arc::new(Mutex::new(chain::block_manager::BlockManager::new(500)));
+
     let state = Arc::new(client::network::SharedState {
         ledger: Mutex::new(storage::ledger::Ledger::new()),
         storage: Mutex::new(storage::level_db::Storage::new(&get_database_path())),
@@ -51,6 +55,7 @@ async fn main() {
         let addr = addr.clone();
         async move { client::network::start_network_connector(&addr).await }
     });
+    let mining = Blockchain::start_mining_service_async(blockchain, block_manager);
 
-    let _ = tokio::join!(listener, connector);
+    let _ = tokio::try_join!(listener, connector, mining).expect("Failed to join");
 }
