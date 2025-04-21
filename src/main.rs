@@ -1,3 +1,6 @@
+use std::{net::SocketAddr, sync::Arc};
+use tokio::sync::Mutex;
+
 mod account;
 mod chain;
 mod client;
@@ -9,22 +12,45 @@ fn get_listen_addr() -> String {
     std::env::var("LISTEN_ADDR").unwrap_or_else(|_| "127.0.0.1:8080".to_string())
 }
 
+fn get_api_addr() -> SocketAddr {
+    std::env::var("API_ADDR")
+        .ok()
+        .and_then(|addr_str| addr_str.parse::<SocketAddr>().ok())
+        .unwrap_or_else(|| {
+            eprintln!("Invalid or unset LISTEN_ADDR, defaulting to 127.0.0.1:3001");
+            "127.0.0.1:3001"
+                .parse()
+                .expect("Default address is invalid")
+        })
+}
+
+fn get_database_path() -> String {
+    std::env::var("DATABASE_PATH").unwrap_or_else(|_| "/tmp/ledger".to_string())
+}
+
 #[tokio::main]
 async fn main() {
-    let listener_handle = tokio::spawn(async move {
-        if let Err(e) = client::network::start_network_listener(&get_listen_addr()).await {
-            eprintln!("Listener failed: {}", e);
-        }
+    let state = Arc::new(client::network::SharedState {
+        ledger: Mutex::new(storage::ledger::Ledger::new()),
+        storage: Mutex::new(storage::level_db::Storage::new(&get_database_path())),
+    });
+    let routes = client::http::create_connect_endpoint(Arc::clone(&state));
+
+    tokio::spawn(async move {
+        let addr = get_api_addr();
+        println!("HTTP server listening on {}", &addr);
+        warp::serve(routes).run(addr).await;
     });
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-
-    let connector_handle = tokio::spawn(async move {
-        if let Err(e) = client::network::start_network_connector(&get_listen_addr()).await {
-            eprintln!("Connector failed: {}", e);
-        }
+    let addr = get_listen_addr();
+    let listener = tokio::spawn({
+        let addr = addr.clone();
+        async move { client::network::start_network_listener(&addr, state).await }
+    });
+    let connector = tokio::spawn({
+        let addr = addr.clone();
+        async move { client::network::start_network_connector(&addr).await }
     });
 
-    let _ = tokio::join!(listener_handle, connector_handle);
-    println!("Exiting main (likely because listener or connector task ended unexpectedly).");
+    let _ = tokio::join!(listener, connector);
 }

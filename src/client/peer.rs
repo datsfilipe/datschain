@@ -12,7 +12,7 @@ pub async fn process_peer_state(
     storage: &mut Storage,
     block_data: &[u8],
     identifier: &str,
-) -> Result<[u8; 32], Box<dyn Error>> {
+) -> Result<[u8; 32], Box<dyn Error + Send + Sync>> {
     let new_state = match Ledger::decode_block(block_data) {
         Ok(block) => block,
         Err(e) => return Err(format!("Failed to decode block: {}", e).into()),
@@ -35,7 +35,7 @@ pub async fn process_peer_state(
         .map_err(|e| format!("Failed to serialize {}: {}", identifier, e))?;
 
     let bytes_key: [u8; 32] = new_state.hash.try_into().unwrap();
-    ledger.commit_with_identifier(&identifier, bytes_key);
+    ledger.commit_with_identifier(&identifier, bytes_key).await;
 
     let entry = ledger::LedgerEntry {
         key: bytes_key,
@@ -68,7 +68,7 @@ pub async fn handle_peer_message(
     storage: &mut Storage,
     block_data: Vec<u8>,
     identifier: &str,
-) -> Result<String, Box<dyn Error>> {
+) -> Result<String, Box<dyn Error + Send + Sync>> {
     match process_peer_state(ledger, storage, &block_data, identifier).await {
         Ok(block_key) => Ok(format!("Block accepted: {}", to_hex(&block_key))),
         Err(e) => Err(format!("Rejected block: {}", e).into()),
@@ -80,7 +80,7 @@ pub async fn receive_from_peer(
     ledger: &mut Ledger,
     storage: &mut Storage,
     identifier: &str,
-) -> Result<String, Box<dyn Error>> {
+) -> Result<String, Box<dyn Error + Send + Sync>> {
     let engine = base64::engine::general_purpose::STANDARD;
     let decoded = base64::Engine::decode(&engine, message)
         .map_err(|e| format!("Failed to decode base64 message: {}", e))?;

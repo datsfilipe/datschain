@@ -1,27 +1,25 @@
 use base64::{engine, Engine};
-use futures::lock::Mutex;
 use std::error::Error;
 use std::sync::Arc;
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt, BufReader, ReadHalf, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::Mutex;
 
 use crate::client::peer::receive_from_peer;
 use crate::storage::{ledger::Ledger, level_db::Storage};
 
-struct SharedState {
-    ledger: Mutex<Ledger>,
-    storage: Mutex<Storage>,
+pub struct SharedState {
+    pub ledger: Mutex<Ledger>,
+    pub storage: Mutex<Storage>,
 }
 
 async fn send_message(writer: &mut WriteHalf<TcpStream>, message: &str) -> io::Result<()> {
     let engine = engine::general_purpose::STANDARD;
-    let encoded_message = Engine::encode(&engine, message);
-    let len = encoded_message.len() as u32;
-
-    writer.write_u32(len).await?;
-    writer.write_all(encoded_message.as_bytes()).await?;
-    writer.flush().await?;
-    Ok(())
+    let encoded = engine.encode(message);
+    let bytes = encoded.as_bytes();
+    writer.write_u32(bytes.len() as u32).await?;
+    writer.write_all(bytes).await?;
+    writer.flush().await
 }
 
 async fn read_message(reader: &mut BufReader<ReadHalf<TcpStream>>) -> io::Result<Option<String>> {
@@ -131,7 +129,7 @@ async fn handle_server_connection(
     Ok(())
 }
 
-async fn handle_client_connection(stream: TcpStream) -> Result<(), Box<dyn Error>> {
+async fn handle_client_connection(stream: TcpStream) -> Result<(), Box<dyn Error + Send + Sync>> {
     let peer_addr = stream.peer_addr()?;
     println!("Client: Connected to server at {}", peer_addr);
 
@@ -176,15 +174,16 @@ async fn handle_client_connection(stream: TcpStream) -> Result<(), Box<dyn Error
     Ok(())
 }
 
-pub async fn start_network_listener(addr: &str) -> io::Result<()> {
+pub async fn start_network_listener(addr: &str, state: Arc<SharedState>) -> io::Result<()> {
     let listener = TcpListener::bind(addr).await?;
     println!("Server: Listener started on {}", addr);
 
     loop {
         match listener.accept().await {
             Ok((stream, _)) => {
+                let state_clone = Arc::clone(&state);
                 tokio::spawn(async move {
-                    if let Err(e) = handle_server_connection(stream).await {
+                    if let Err(e) = handle_server_connection(stream, state_clone).await {
                         eprintln!("Server: Error handling connection: {}", e);
                     }
                 });
