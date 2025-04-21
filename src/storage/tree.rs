@@ -18,8 +18,18 @@ impl Tree {
         self.tree.insert(value);
     }
 
-    pub fn commit(&mut self) {
+    pub fn commit(&mut self) -> (bool, Vec<u8>, Vec<usize>) {
         self.tree.commit();
+        let leaves = self.get_leaves();
+        let indices = leaves.iter().map(|_| 0).collect::<Vec<usize>>();
+        let proof = self.generate_proof_bytes(&indices);
+        match self.verify_proof_bytes(&leaves, &indices, &proof) {
+            true => return (true, proof, indices),
+            false => {
+                self.rollback();
+                return (false, proof, indices);
+            }
+        }
     }
 
     pub fn get_leaves(&self) -> Vec<[u8; 32]> {

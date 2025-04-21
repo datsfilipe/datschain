@@ -1,11 +1,18 @@
-use bincode::{config, decode_from_slice, encode_into_slice, Decode, Encode};
+use bincode::{decode_from_slice, encode_into_slice, Decode, Encode};
 use std::collections::HashMap;
 
 use crate::account::wallet::Wallet;
 use crate::chain::block::Block;
 use crate::cryptography::hash::transform;
-use crate::storage::tree::Tree;
+use crate::storage::{level_db::Storage, tree::Tree};
 use crate::utils::conversion::{hash_to_32bit_array, to_hex};
+
+#[derive(Encode, Decode)]
+pub enum DecodedData {
+    Mining(DifficultyUpdate),
+    Accounts(Wallet),
+    Blocks(Block),
+}
 
 pub struct Ledger {
     pub mining_tree: Tree,
@@ -45,133 +52,82 @@ impl Ledger {
         }
     }
 
-    pub fn store_difficulty(&mut self, diff_update: &DifficultyUpdate) -> [u8; 32] {
-        let mut serialized = vec![0u8; 34];
-        encode_into_slice(&diff_update, &mut serialized, config::standard()).unwrap();
-        let key = transform(&format!("{:?}", serialized));
-        let bytes_key = hash_to_32bit_array(key);
-
-        self.mining_tree.insert(bytes_key);
-        self.mining_tree.commit();
-
-        let entry = LedgerEntry {
-            key: bytes_key,
-            value: serialized,
-            proof: None,
-            version: 0,
-        };
-
-        self.entries.insert(bytes_key, entry);
-        bytes_key
+    pub fn get_key(&self, value: &DecodedData) -> [u8; 32] {
+        let encoded = self.encode_value(value);
+        hash_to_32bit_array(transform(&format!("{:?}", encoded)))
     }
 
-    pub fn store_account(&mut self, account: Wallet) -> [u8; 32] {
-        let mut serialized = vec![0u8; 256];
-        encode_into_slice(&account, &mut serialized, config::standard()).unwrap();
-        let key = transform(&format!("{:?}", serialized));
-        let bytes_key = hash_to_32bit_array(key);
-
-        self.accounts_tree.insert(bytes_key);
-        self.accounts_tree.commit();
-
-        let entry = LedgerEntry {
-            key: bytes_key,
-            value: serialized,
-            proof: None,
-            version: 0,
-        };
-
-        self.entries.insert(bytes_key, entry);
-        bytes_key
-    }
-
-    pub async fn commit_with_identifier(&mut self, tree_identifier: &str, key: [u8; 32]) {
+    pub async fn commit_with_identifier(
+        &mut self,
+        key: [u8; 32],
+        tree_identifier: &str,
+        storage: &mut Storage,
+    ) -> Option<LedgerProof> {
+        let mut proof: Option<Vec<u8>> = None;
+        let mut proof_indices: Vec<usize> = vec![];
         match tree_identifier {
             "mining" => {
                 self.mining_tree.insert(key);
-                self.mining_tree.commit();
+                let (ok, tree_proof, tree_indices) = self.mining_tree.commit();
+                if ok {
+                    proof = Some(tree_proof);
+                    proof_indices = tree_indices;
+                }
             }
             "accounts" => {
                 self.accounts_tree.insert(key);
-                self.accounts_tree.commit();
+                let (ok, tree_proof, tree_indices) = self.accounts_tree.commit();
+                if ok {
+                    proof = Some(tree_proof);
+                    proof_indices = tree_indices;
+                }
             }
             "blocks" => {
                 self.blocks_tree.insert(key);
-                self.blocks_tree.commit();
+                let (ok, tree_proof, tree_indices) = self.blocks_tree.commit();
+                if ok {
+                    proof = Some(tree_proof);
+                    proof_indices = tree_indices;
+                }
             }
             _ => {}
         }
-    }
 
-    pub fn rollback_with_identifier(&mut self, tree_identifier: &str, key: [u8; 32]) {
-        match tree_identifier {
-            "mining" => self.mining_tree.rollback(),
-            "accounts" => self.accounts_tree.rollback(),
-            "blocks" => self.blocks_tree.rollback(),
-            _ => {}
+        if let Some(proof) = proof {
+            storage
+                .store(&key, self.format_entry(&key))
+                .await
+                .expect("Failed to store proof");
+
+            return Some(LedgerProof {
+                tree_identifier: tree_identifier.to_string(),
+                proof_indices,
+                proof_data: proof,
+            });
         }
+
+        None
     }
 
-    pub async fn sync_client_block(&mut self, key: [u8; 32], entry: String, tree_identifier: &str) {
-        self.commit_with_identifier(tree_identifier, key).await;
+    pub async fn sync_client_block(
+        &mut self,
+        key: [u8; 32],
+        entry: String,
+        tree_identifier: &str,
+        storage: &mut Storage,
+    ) {
+        let proof = self
+            .commit_with_identifier(key, tree_identifier, storage)
+            .await;
 
         let entry = LedgerEntry {
             key,
+            proof,
             value: entry.into_bytes(),
-            // TODO: add proof from the otehr client
-            proof: None,
             version: 0,
         };
 
         self.entries.insert(key, entry);
-    }
-
-    pub fn store_block(&mut self, block: Block) -> [u8; 32] {
-        let mut serialized = vec![0u8; 256];
-        encode_into_slice(&block, &mut serialized, config::standard()).unwrap();
-        let key = transform(&format!("{:?}", serialized));
-        let bytes_key = hash_to_32bit_array(key);
-
-        self.blocks_tree.insert(bytes_key);
-        self.blocks_tree.commit();
-
-        let entry = LedgerEntry {
-            key: bytes_key,
-            value: serialized,
-            proof: None,
-            version: 0,
-        };
-
-        self.entries.insert(bytes_key, entry);
-        bytes_key
-    }
-
-    pub fn generate_proofs(&mut self, tree_identifier: &str) {
-        let tree = match tree_identifier {
-            "mining" => &self.mining_tree,
-            "accounts" => &self.accounts_tree,
-            "blocks" => &self.blocks_tree,
-            _ => return,
-        };
-
-        let leaves = tree.get_leaves();
-        if leaves.is_empty() {
-            return;
-        }
-
-        for (i, leaf) in leaves.iter().enumerate() {
-            if let Some(entry) = self.entries.get_mut(leaf) {
-                let proof_indices = vec![i];
-                let proof_data = tree.generate_proof_bytes(&[i]);
-
-                entry.proof = Some(LedgerProof {
-                    tree_identifier: tree_identifier.to_string(),
-                    proof_indices,
-                    proof_data,
-                });
-                entry.version += 1;
-            }
-        }
     }
 
     pub fn verify_entry(&self, key: &[u8; 32]) -> bool {
@@ -204,30 +160,31 @@ impl Ledger {
         }
     }
 
-    pub fn decode_difficulty(
-        value: &[u8],
-    ) -> Result<DifficultyUpdate, bincode::error::DecodeError> {
-        decode_from_slice::<DifficultyUpdate, _>(value, bincode::config::standard())
-            .map(|(value, _)| value)
+    pub fn decode_value<T>(&self, value: &[u8]) -> Result<T, bincode::error::DecodeError>
+    where
+        T: Decode<()>,
+    {
+        decode_from_slice::<T, _>(value, bincode::config::standard()).map(|(value, _)| value)
     }
 
-    pub fn decode_account(value: &[u8]) -> Result<Wallet, bincode::error::DecodeError> {
-        decode_from_slice::<Wallet, _>(value, bincode::config::standard()).map(|(value, _)| value)
-    }
-
-    pub fn decode_block(value: &[u8]) -> Result<Block, bincode::error::DecodeError> {
-        decode_from_slice::<Block, _>(value, bincode::config::standard()).map(|(value, _)| value)
+    pub fn encode_value<T>(&self, value: &T) -> Vec<u8>
+    where
+        T: Encode,
+    {
+        let mut serialized = vec![0u8; 256];
+        encode_into_slice(value, &mut serialized, bincode::config::standard()).unwrap();
+        serialized
     }
 
     fn determine_value_type(&self, value: &[u8]) -> String {
-        if let Ok(difficulty) = Ledger::decode_difficulty(value) {
+        if let Ok(difficulty) = self.decode_value::<DifficultyUpdate>(value) {
             format!(
                 "{{current:{}, previous:{}, difference:{}}}",
                 difficulty.current, difficulty.previous, difficulty.difference
             )
-        } else if let Ok(account) = Ledger::decode_account(value) {
+        } else if let Ok(account) = self.decode_value::<Wallet>(value) {
             format!("{{address:{:?}, deleted:{}}}", account.address, false)
-        } else if let Ok(block) = Ledger::decode_block(value) {
+        } else if let Ok(block) = self.decode_value::<Block>(value) {
             format!(
                 "{{hash:{:?}, height:{}, transactions:{:?}}}",
                 block.hash, block.height, block.transactions
