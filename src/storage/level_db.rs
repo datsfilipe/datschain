@@ -31,7 +31,7 @@ impl Storage {
         &mut self,
         key: &[u8; 32],
         value: String,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         println!("Storing data with key: {:?}", key);
 
         let _guard = self.write_lock.lock().await;
