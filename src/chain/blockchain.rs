@@ -1,10 +1,10 @@
+use bytes::Bytes;
 use std::sync::Arc;
 use tokio;
 
 use crate::account::wallet::Wallet;
 use crate::chain::block::{Block, BlockStatus};
 use crate::client::network::SharedState;
-use crate::client::sink::safe_send;
 use crate::storage::ledger::LedgerValue;
 
 use super::block_manager::BlockManager;
@@ -113,9 +113,9 @@ impl Blockchain {
                                 .await
                                 .format_entry_value(&key, &parsed_block);
 
-                            if let Err(e) = safe_send(&state.sink, &message).await {
-                                eprintln!("Failed to send block: {}", e);
-                            };
+                            if let Err(e) = state.tx.send(Bytes::from(message)) {
+                                eprintln!("Failed to broadcast block: {}", e);
+                            }
                         }
                         Ok(false) => eprintln!("Proof‑of‑work failed for {}", height),
                         Err(e) => eprintln!("Mining thread panicked: {}", e),

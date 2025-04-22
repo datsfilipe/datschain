@@ -10,8 +10,8 @@ pub fn create_connect_endpoint(
     warp::path!("api" / "connect")
         .and(warp::post())
         .and(warp::body::content_length_limit(1024 * 16))
-        .and(warp::body::json::<String>())
         .and(warp::any().map(move || Arc::clone(&state)))
-        .and_then(|request, state| process_connect_request(state, request))
+        .and(warp::body::bytes())
+        .and_then(|state, request| process_connect_request(state, request))
         .with(warp::cors().allow_any_origin())
 }

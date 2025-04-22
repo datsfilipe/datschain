@@ -1,20 +1,12 @@
-use std::collections::HashMap;
-
+use crate::{
+    account::wallet::Wallet,
+    chain::block::Block,
+    cryptography::hash::transform,
+    storage::{level_db::Storage, tree::Tree},
+    utils::conversion::{hash_to_32bit_array, to_hex},
+};
 use serde::{Deserialize, Serialize};
-
-use crate::account::wallet::Wallet;
-use crate::chain::block::Block;
-use crate::cryptography::hash::transform;
-use crate::storage::{level_db::Storage, tree::Tree};
-use crate::utils::conversion::{hash_to_32bit_array, to_hex};
-use crate::utils::encoding::decode_from_base64;
-
-pub struct Ledger {
-    pub mining_tree: Tree,
-    pub accounts_tree: Tree,
-    pub blocks_tree: Tree,
-    pub entries: HashMap<[u8; 32], LedgerEntry>,
-}
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct LedgerEntry {
@@ -26,9 +18,9 @@ pub struct LedgerEntry {
 
 #[derive(Debug, Clone)]
 pub struct LedgerProof {
-    tree_identifier: String,
-    proof_indices: Vec<usize>,
-    proof_data: Vec<u8>,
+    pub tree_identifier: String,
+    pub proof_indices: Vec<usize>,
+    pub proof_data: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -52,6 +44,13 @@ pub struct DeserializedLedgerValue {
     pub key: String,
 }
 
+pub struct Ledger {
+    pub mining_tree: Tree,
+    pub accounts_tree: Tree,
+    pub blocks_tree: Tree,
+    pub entries: HashMap<[u8; 32], LedgerEntry>,
+}
+
 impl Ledger {
     pub fn new() -> Self {
         Ledger {
@@ -72,13 +71,18 @@ impl Ledger {
         value: LedgerValue,
         proof: LedgerProof,
     ) -> LedgerEntry {
+        let version = self.entries.get(&key).map_or(0, |e| e.version + 1);
         let entry = LedgerEntry {
             key,
             value,
             proof: Some(proof),
-            version: 0,
+            version,
         };
-
+        println!(
+            "Saving entry key: {}, version: {}",
+            to_hex(&key),
+            entry.version
+        );
         self.entries.insert(key, entry.clone());
         entry
     }
@@ -90,53 +94,70 @@ impl Ledger {
         tree_identifier: &str,
         storage: &mut Storage,
     ) -> Option<LedgerProof> {
-        let mut proof: Option<Vec<u8>> = None;
-        let mut proof_indices: Vec<usize> = vec![];
-        match tree_identifier {
-            "mining" => {
-                self.mining_tree.insert(key);
-                let (ok, tree_proof, tree_indices) = self.mining_tree.commit();
-                if ok {
-                    proof = Some(tree_proof);
-                    proof_indices = tree_indices;
+        let (ok, tree_proof_bytes, tree_indices) = {
+            let tree = match tree_identifier {
+                "mining" => &mut self.mining_tree,
+                "accounts" => &mut self.accounts_tree,
+                "blocks" => &mut self.blocks_tree,
+                _ => {
+                    eprintln!("Unknown tree identifier: {}", tree_identifier);
+                    return None;
                 }
-            }
-            "accounts" => {
-                self.accounts_tree.insert(key);
-                let (ok, tree_proof, tree_indices) = self.accounts_tree.commit();
-                if ok {
-                    proof = Some(tree_proof);
-                    proof_indices = tree_indices;
-                }
-            }
-            "blocks" => {
-                self.blocks_tree.insert(key);
-                let (ok, tree_proof, tree_indices) = self.blocks_tree.commit();
-                if ok {
-                    proof = Some(tree_proof);
-                    proof_indices = tree_indices;
-                }
-            }
-            _ => {}
-        }
+            };
 
-        if let Some(proof) = proof {
-            let proof = Some(LedgerProof {
+            tree.insert(key);
+            tree.commit()
+        };
+
+        if ok {
+            println!(
+                "Commit successful for tree '{}', key {}",
+                tree_identifier,
+                to_hex(&key)
+            );
+            let proof = LedgerProof {
                 tree_identifier: tree_identifier.to_string(),
-                proof_indices,
-                proof_data: proof,
-            });
-
-            let entry = self.save_entry(key, entry_value, proof.clone().unwrap());
-            storage
-                .store(&key, self.format_entry_value(&entry.key, &entry.value))
-                .await
-                .expect("Failed to store proof");
-
-            return proof;
+                proof_indices: tree_indices,
+                proof_data: tree_proof_bytes,
+            };
+            let entry = self.save_entry(key, entry_value, proof.clone());
+            let formatted_value = self.format_entry_value(&entry.key, &entry.value);
+            match storage.store(&key, formatted_value).await {
+                Ok(_) => {
+                    println!("Successfully stored entry {} in LevelDB", to_hex(&key));
+                    Some(proof)
+                }
+                Err(e) => {
+                    eprintln!("Failed to store entry {} in LevelDB after commit: {}. Rolling back tree state.", to_hex(&key), e);
+                    match tree_identifier {
+                        "mining" => self.mining_tree.rollback(),
+                        "accounts" => self.accounts_tree.rollback(),
+                        "blocks" => self.blocks_tree.rollback(),
+                        _ => {}
+                    };
+                    None
+                }
+            }
+        } else {
+            eprintln!(
+                "Merkle tree commit failed for tree '{}', key {}. Tree automatically rolled back.",
+                tree_identifier,
+                to_hex(&key)
+            );
+            None
         }
+    }
 
-        None
+    pub async fn commit_peer_state(
+        &mut self,
+        key: [u8; 32],
+        entry_value: LedgerValue,
+        tree_identifier: &str,
+        storage: &mut Storage,
+    ) -> Option<()> {
+        self.commit_with_identifier(key, entry_value, tree_identifier, storage)
+            .await
+            .map(|_| ())
     }
 
     pub async fn sync_client_block(
@@ -145,14 +166,9 @@ impl Ledger {
         entry_value: LedgerValue,
         tree_identifier: &str,
         storage: &mut Storage,
-    ) -> Option<bool> {
-        let proof = self
-            .commit_with_identifier(key, entry_value, tree_identifier, storage)
-            .await;
-        match proof {
-            Some(_) => Some(true),
-            None => None,
-        }
+    ) -> Option<()> {
+        self.commit_peer_state(key, entry_value, tree_identifier, storage)
+            .await
     }
 
     pub fn verify_entry(&self, key: &[u8; 32]) -> bool {
@@ -164,48 +180,40 @@ impl Ledger {
                     "blocks" => &self.blocks_tree,
                     _ => return false,
                 };
-
                 return tree.verify_proof_bytes(&[*key], &proof.proof_indices, &proof.proof_data);
             }
         }
         false
     }
 
-    pub fn format_entry_value(&self, key: &[u8; 32], value: &LedgerValue) -> String {
-        if let Some(entry) = self.entries.get(key) {
-            match serde_json::to_string(&value) {
-                Ok(value) => format!(
-                    "key={}, value={}, version={}",
-                    to_hex(&entry.key),
-                    value,
-                    entry.version
-                ),
-                Err(e) => format!(
-                    "key={}, value={}, version={}, error={}",
-                    to_hex(&entry.key),
-                    serde_json::to_string(&value)
-                        .unwrap_or("Failed to serialize value".to_string()),
-                    entry.version,
+    pub fn format_entry_value(&mut self, key: &[u8; 32], value: &LedgerValue) -> String {
+        let value_str = match serde_json::to_string(&value) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!(
+                    "Failed to serialize LedgerValue for key {}: {}",
+                    to_hex(key),
                     e
-                ),
+                );
+                format!("\"Error serializing value: {}\"", e)
             }
-        } else {
-            "Entry not found".to_string() // TODO: return error
-        }
+        };
+
+        format!(
+            "{{\"key\":\"{}\", \"value\":{}, \"version\":{}}}",
+            to_hex(key),
+            value_str,
+            0,
+        )
     }
 
     pub fn get_latest_block_key(&self) -> Option<[u8; 32]> {
-        let leaves = self.blocks_tree.get_leaves();
-        leaves.last().copied()
+        self.blocks_tree.get_leaves().last().copied()
     }
-
     pub fn get_latest_account_key(&self) -> Option<[u8; 32]> {
-        let leaves = self.accounts_tree.get_leaves();
-        leaves.last().copied()
+        self.accounts_tree.get_leaves().last().copied()
     }
-
     pub fn get_latest_mining_key(&self) -> Option<[u8; 32]> {
-        let leaves = self.mining_tree.get_leaves();
-        leaves.last().copied()
+        self.mining_tree.get_leaves().last().copied()
     }
 }

@@ -1,62 +1,88 @@
+use crate::{
+    storage::{
+        ledger::{DeserializedLedgerValue, Ledger},
+        level_db::Storage,
+    },
+    utils::conversion::to_hex,
+};
 use std::error::Error;
 
-use crate::storage::ledger::DeserializedLedgerValue;
-use crate::storage::{ledger::Ledger, level_db::Storage};
-use crate::utils::conversion::to_hex;
-use crate::utils::encoding::decode_base64_to_string;
-
-pub async fn process_peer_state(
+async fn process_peer_state(
     ledger: &mut Ledger,
     storage: &mut Storage,
     data: String,
     identifier: &str,
 ) -> Result<[u8; 32], Box<dyn Error + Send + Sync>> {
-    let new_state = match serde_json::from_str::<DeserializedLedgerValue>(&data) {
-        Ok(value) => value,
-        Err(e) => return Err(format!("Failed to parse JSON value: {}", e).into()),
-    };
+    let new_state: DeserializedLedgerValue =
+        match serde_json::from_str::<DeserializedLedgerValue>(&data) {
+            Ok(value) => value,
+            Err(e) => {
+                return Err(format!(
+                    "Failed to parse JSON value from peer: {}. Data: '{}'",
+                    e, data
+                )
+                .into())
+            }
+        };
 
-    let exists = ledger
-        .entries
-        .iter()
-        .any(|(_, entry)| entry.key == new_state.key.as_bytes());
-
-    if exists {
-        return Err(format!("{} already exists in ledger", identifier).into());
+    let calculated_key = ledger.get_key(&new_state.value);
+    if ledger.entries.contains_key(&calculated_key) {
+        return Err(format!(
+            "{} with calculated key {} already exists in ledger",
+            identifier,
+            to_hex(&calculated_key)
+        )
+        .into());
     }
 
-    let key = ledger.get_key(&new_state.value);
+    println!(
+        "Processing new state for identifier '{}' with calculated key {}",
+        identifier,
+        to_hex(&calculated_key)
+    );
+
     match ledger
-        .sync_client_block(key, new_state.value, identifier, storage)
+        .sync_client_block(calculated_key, new_state.value, identifier, storage)
         .await
     {
         Some(_) => {
-            println!("Successfully committed block to ledger");
-            Ok(key)
+            println!(
+                "Successfully committed peer state ({}) to ledger with key {}",
+                identifier,
+                to_hex(&calculated_key)
+            );
+            Ok(calculated_key)
         }
-        None => return Err(format!("Failed to commit block to ledger").into()),
+        None => {
+            eprintln!(
+                "Failed to commit peer state ({}) to ledger for key {}",
+                identifier,
+                to_hex(&calculated_key)
+            );
+            Err(format!("Failed to commit {} state to ledger", identifier).into())
+        }
     }
 }
 
-pub async fn handle_peer_message(
+async fn handle_peer_message(
     ledger: &mut Ledger,
     storage: &mut Storage,
-    data: String,
+    decoded_inner_data: String,
     identifier: &str,
 ) -> Result<String, Box<dyn Error + Send + Sync>> {
-    match process_peer_state(ledger, storage, data, identifier).await {
-        Ok(key) => Ok(format!("Data accepted: {}", to_hex(&key))),
-        Err(e) => Err(format!("Rejected block: {}", e).into()),
+    match process_peer_state(ledger, storage, decoded_inner_data, identifier).await {
+        Ok(key) => Ok(format!("Data ({}) accepted: {}", identifier, to_hex(&key))),
+        Err(e) => Err(format!("Rejected {} state: {}", identifier, e).into()),
     }
 }
 
 pub async fn receive_from_peer(
-    message: String,
+    decoded_inner_data: String,
     ledger: &mut Ledger,
     storage: &mut Storage,
     identifier: &str,
 ) -> Result<String, Box<dyn Error + Send + Sync>> {
-    let decoded =
-        decode_base64_to_string(&message).map_err(|e| format!("Error decoding message: {}", e))?;
-    handle_peer_message(ledger, storage, decoded, identifier).await
+    println!("Received message from peer: {}", decoded_inner_data);
+
+    handle_peer_message(ledger, storage, decoded_inner_data, identifier).await
 }
