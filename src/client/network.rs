@@ -1,25 +1,18 @@
 use base64::{engine, Engine};
 use std::error::Error;
 use std::sync::Arc;
-use tokio::io::{self, AsyncReadExt, AsyncWriteExt, BufReader, ReadHalf, WriteHalf};
+use tokio::io::{self, AsyncReadExt, BufReader, ReadHalf};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 
 use crate::client::peer::receive_from_peer;
+use crate::client::sink::{safe_send, MessageSink, TcpSink};
 use crate::storage::{ledger::Ledger, level_db::Storage};
 
 pub struct SharedState {
     pub ledger: Mutex<Ledger>,
     pub storage: Mutex<Storage>,
-}
-
-async fn send_message(writer: &mut WriteHalf<TcpStream>, message: &str) -> io::Result<()> {
-    let engine = engine::general_purpose::STANDARD;
-    let encoded = engine.encode(message);
-    let bytes = encoded.as_bytes();
-    writer.write_u32(bytes.len() as u32).await?;
-    writer.write_all(bytes).await?;
-    writer.flush().await
+    pub sink: Mutex<Option<Arc<dyn MessageSink>>>,
 }
 
 async fn read_message(reader: &mut BufReader<ReadHalf<TcpStream>>) -> io::Result<Option<String>> {
@@ -58,10 +51,12 @@ async fn handle_server_connection(
     let peer_addr = stream.peer_addr()?;
     println!("Server: Connection established with: {}", peer_addr);
 
-    let (reader, mut writer) = io::split(stream);
+    let (reader, _) = io::split(stream);
     let mut reader = BufReader::new(reader);
 
-    send_message(&mut writer, "Hello from server!").await?;
+    if let Some(sink) = &*state.sink.lock().await {
+        sink.send("Hello from server!").await?;
+    }
     println!("Server: Sent greeting to {}", peer_addr);
 
     loop {
@@ -87,7 +82,7 @@ async fn handle_server_connection(
 
                     match receive_from_peer(data, &mut ledger, &mut storage, &identifier).await {
                         Ok(response) => {
-                            if let Err(e) = send_message(&mut writer, &response).await {
+                            if let Err(e) = safe_send(&state.sink, &response).await {
                                 eprintln!(
                                     "Server: Failed to send block response to {}: {}",
                                     peer_addr, e
@@ -97,7 +92,7 @@ async fn handle_server_connection(
                         }
                         Err(e) => {
                             let error_msg = format!("Error processing block: {}", e);
-                            if let Err(e) = send_message(&mut writer, &error_msg).await {
+                            if let Err(e) = safe_send(&state.sink, &error_msg).await {
                                 eprintln!(
                                     "Server: Failed to send error response to {}: {}",
                                     peer_addr, e
@@ -108,7 +103,7 @@ async fn handle_server_connection(
                     }
                 } else if !message.starts_with("Echo:") {
                     let response = format!("Echo: {}", message);
-                    if let Err(e) = send_message(&mut writer, &response).await {
+                    if let Err(e) = safe_send(&state.sink, &response).await {
                         eprintln!("Server: Failed to send response to {}: {}", peer_addr, e);
                         break;
                     }
@@ -129,14 +124,23 @@ async fn handle_server_connection(
     Ok(())
 }
 
-async fn handle_client_connection(stream: TcpStream) -> Result<(), Box<dyn Error + Send + Sync>> {
+async fn handle_client_connection(
+    stream: TcpStream,
+    state: Arc<SharedState>,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
     let peer_addr = stream.peer_addr()?;
     println!("Client: Connected to server at {}", peer_addr);
 
-    let (reader, mut writer) = io::split(stream);
+    let (reader, writer) = io::split(stream);
     let mut reader = BufReader::new(reader);
+    let sink: Arc<dyn MessageSink> = Arc::new(TcpSink(Mutex::new(writer)));
 
-    send_message(&mut writer, "Hello from client!").await?;
+    {
+        let mut slot = state.sink.lock().await;
+        *slot = Some(sink.clone());
+    }
+
+    sink.send("Hello from client!").await?;
     println!("Client: Sent greeting to server");
 
     let client_sender = tokio::spawn(async move {
@@ -144,7 +148,7 @@ async fn handle_client_connection(stream: TcpStream) -> Result<(), Box<dyn Error
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
             let message = format!("Client message #{}", count);
-            if let Err(e) = send_message(&mut writer, &message).await {
+            if let Err(e) = sink.send(&message).await {
                 eprintln!("Client: Failed to send message: {}", e);
                 break;
             }
@@ -196,11 +200,11 @@ pub async fn start_network_listener(addr: &str, state: Arc<SharedState>) -> io::
     }
 }
 
-pub async fn start_network_connector(addr: &str) -> io::Result<()> {
+pub async fn start_network_connector(addr: &str, state: Arc<SharedState>) -> io::Result<()> {
     match TcpStream::connect(addr).await {
         Ok(stream) => {
             println!("Client: Successfully connected to {}", addr);
-            if let Err(e) = handle_client_connection(stream).await {
+            if let Err(e) = handle_client_connection(stream, state).await {
                 eprintln!("Client: Error handling connection: {}", e);
             }
             Ok(())

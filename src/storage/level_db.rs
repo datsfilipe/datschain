@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use tokio::sync::Mutex;
 
 pub struct Storage {
@@ -8,12 +7,23 @@ pub struct Storage {
 
 impl Storage {
     pub fn new(path: &str) -> Self {
-        let opts = rusty_leveldb::Options::default();
-        let db = rusty_leveldb::DB::open(path, opts).expect("Failed to open database");
+        println!("Initializing storage at path: {}", path);
 
-        Storage {
-            db,
-            write_lock: Mutex::new(()),
+        let mut opts = rusty_leveldb::Options::default();
+        opts.create_if_missing = true;
+
+        match rusty_leveldb::DB::open(path, opts) {
+            Ok(db) => {
+                println!("Successfully opened database");
+                Storage {
+                    db,
+                    write_lock: Mutex::new(()),
+                }
+            }
+            Err(e) => {
+                eprintln!("Failed to open database: {}", e);
+                panic!("Database initialization failed: {}", e);
+            }
         }
     }
 
@@ -22,39 +32,19 @@ impl Storage {
         key: &[u8; 32],
         value: String,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        println!("Storing data with key: {:?}", key);
+
         let _guard = self.write_lock.lock().await;
 
-        self.db
-            .put(key, value.as_bytes())
-            .map_err(|e| format!("Failed to store key: {}", e).into())
-    }
-
-    pub async fn get(
-        &mut self,
-        key: &[u8; 32],
-    ) -> Result<Option<String>, Box<dyn std::error::Error>> {
-        match self.db.get(key) {
-            Some(bytes) => {
-                let value = String::from_utf8(bytes)
-                    .map_err(|e| format!("Invalid UTF-8 sequence: {}", e))?;
-                Ok(Some(value))
+        match self.db.put(key, value.as_bytes()) {
+            Ok(_) => {
+                println!("Successfully stored data");
+                Ok(())
             }
-            None => Ok(None),
+            Err(e) => {
+                eprintln!("Failed to store key: {}", e);
+                Err(format!("Failed to store key: {}", e).into())
+            }
         }
-    }
-
-    pub async fn batch_write(
-        &mut self,
-        entries: HashMap<[u8; 32], String>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let _guard = self.write_lock.lock().await;
-
-        for (key, value) in entries {
-            self.db
-                .put(&key, value.as_bytes())
-                .map_err(|e| format!("Failed to store key in batch: {}", e))?;
-        }
-
-        Ok(())
     }
 }

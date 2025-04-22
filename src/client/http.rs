@@ -1,67 +1,8 @@
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use warp::{Filter, Rejection, Reply};
 
-use crate::account::wallet::Wallet;
+use crate::client::handlers::process_connect_request;
 use crate::client::network::SharedState;
-use crate::storage::ledger::DecodedData;
-
-#[derive(Deserialize)]
-pub struct SendDataRequest {
-    pub data: String,
-}
-
-#[derive(Deserialize)]
-pub struct ConnectRequest {
-    private_key: String,
-    public_key: String,
-}
-
-#[derive(Serialize)]
-pub struct Response {
-    pub success: bool,
-    pub message: String,
-    pub tx_hash: Option<String>,
-}
-
-async fn process_connect_request(
-    state: Arc<SharedState>,
-    request: ConnectRequest,
-) -> Result<impl Reply, Rejection> {
-    let wallet = Wallet::new(
-        request.private_key.as_bytes().to_vec(),
-        request.public_key.as_bytes().to_vec(),
-    );
-    let address = wallet.get_address();
-    let key = state
-        .ledger
-        .lock()
-        .await
-        .get_key(&DecodedData::Accounts(wallet));
-
-    let mut storage = state.storage.lock().await;
-    state
-        .ledger
-        .lock()
-        .await
-        .commit_with_identifier(key, "accounts", &mut *storage)
-        .await;
-    let formatted_entry = state.ledger.lock().await.format_entry(&key);
-
-    state
-        .storage
-        .lock()
-        .await
-        .store(&key, formatted_entry)
-        .await
-        .unwrap();
-
-    Ok(warp::reply::json(&Response {
-        success: true,
-        message: format!("address: {}", address),
-        tx_hash: None,
-    }))
-}
 
 pub fn create_connect_endpoint(
     state: Arc<SharedState>,

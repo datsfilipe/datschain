@@ -39,4 +39,11 @@ impl Wallet {
         data.extend_from_slice(&value.to_be_bytes());
         self.sign(&data)
     }
+
+    pub fn to_vec(&self) -> Vec<u8> {
+        let mut data = Vec::new();
+        data.extend_from_slice(&self.address);
+        data.extend_from_slice(&self.public_key);
+        data
+    }
 }
