@@ -72,7 +72,7 @@ async fn main() {
     let connector = tokio::spawn({
         let state_clone = Arc::clone(&state);
         let addr_clone = addr.clone();
-        async move { client::network::start_network_connector(&addr_clone, state_clone).await }
+        async move { client::network::start_network_connector(&addr_clone, state_clone, addr).await }
     });
 
     let mining =

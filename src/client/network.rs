@@ -242,7 +242,16 @@ pub async fn start_network_listener(addr: &str, state: Arc<SharedState>) -> io::
     }
 }
 
-pub async fn start_network_connector(addr: &str, state: Arc<SharedState>) -> io::Result<()> {
+pub async fn start_network_connector(
+    addr: &str,
+    state: Arc<SharedState>,
+    listen_addr: String,
+) -> io::Result<()> {
+    if addr == listen_addr {
+        println!("Skipping connection to self: {}", addr);
+        return Ok(());
+    }
+
     println!("Attempting to connect to {}", addr);
     match TcpStream::connect(addr).await {
         Ok(stream) => {
