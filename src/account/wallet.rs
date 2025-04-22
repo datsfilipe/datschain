@@ -1,10 +1,10 @@
-use bincode::{Decode, Encode};
+use serde::{Deserialize, Serialize};
 
 use crate::cryptography::signature::{get_private_key, sign};
 use crate::utils::conversion::public_key_to_address;
 use crate::utils::conversion::to_hex;
 
-#[derive(Encode, Decode, Clone)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Wallet {
     pub address: Vec<u8>,
     pub public_key: Vec<u8>,
@@ -38,12 +38,5 @@ impl Wallet {
         data.extend_from_slice(&to.address);
         data.extend_from_slice(&value.to_be_bytes());
         self.sign(&data)
-    }
-
-    pub fn to_vec(&self) -> Vec<u8> {
-        let mut data = Vec::new();
-        data.extend_from_slice(&self.address);
-        data.extend_from_slice(&self.public_key);
-        data
     }
 }

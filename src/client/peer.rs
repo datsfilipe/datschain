@@ -1,34 +1,33 @@
 use std::error::Error;
 
-use crate::storage::{
-    ledger::{DecodedData, Ledger},
-    level_db::Storage,
-};
+use crate::storage::ledger::DeserializedLedgerValue;
+use crate::storage::{ledger::Ledger, level_db::Storage};
 use crate::utils::conversion::to_hex;
+use crate::utils::encoding::decode_base64_to_string;
 
 pub async fn process_peer_state(
     ledger: &mut Ledger,
     storage: &mut Storage,
-    data: Vec<u8>,
+    data: String,
     identifier: &str,
 ) -> Result<[u8; 32], Box<dyn Error + Send + Sync>> {
-    let new_state: DecodedData = match ledger.decode_value(&data) {
-        Ok(block) => block,
-        Err(e) => return Err(format!("Failed to decode block: {}", e).into()),
+    let new_state = match serde_json::from_str::<DeserializedLedgerValue>(&data) {
+        Ok(value) => value,
+        Err(e) => return Err(format!("Failed to parse JSON value: {}", e).into()),
     };
 
     let exists = ledger
         .entries
         .iter()
-        .any(|(_, entry)| ledger.encode_value(&entry.value) == ledger.encode_value(&new_state));
+        .any(|(_, entry)| entry.key == new_state.key.as_bytes());
 
     if exists {
         return Err(format!("{} already exists in ledger", identifier).into());
     }
 
-    let key = ledger.get_key(&new_state);
+    let key = ledger.get_key(&new_state.value);
     match ledger
-        .sync_client_block(key, data, identifier, storage)
+        .sync_client_block(key, new_state.value, identifier, storage)
         .await
     {
         Some(_) => {
@@ -42,7 +41,7 @@ pub async fn process_peer_state(
 pub async fn handle_peer_message(
     ledger: &mut Ledger,
     storage: &mut Storage,
-    data: Vec<u8>,
+    data: String,
     identifier: &str,
 ) -> Result<String, Box<dyn Error + Send + Sync>> {
     match process_peer_state(ledger, storage, data, identifier).await {
@@ -57,9 +56,7 @@ pub async fn receive_from_peer(
     storage: &mut Storage,
     identifier: &str,
 ) -> Result<String, Box<dyn Error + Send + Sync>> {
-    let engine = base64::engine::general_purpose::STANDARD;
-    let decoded = base64::Engine::decode(&engine, message)
-        .map_err(|e| format!("Failed to decode base64 message: {}", e))?;
-
+    let decoded =
+        decode_base64_to_string(&message).map_err(|e| format!("Error decoding message: {}", e))?;
     handle_peer_message(ledger, storage, decoded, identifier).await
 }

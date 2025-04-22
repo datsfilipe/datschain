@@ -8,6 +8,7 @@ use tokio::sync::Mutex;
 use crate::client::peer::receive_from_peer;
 use crate::client::sink::{safe_send, MessageSink, TcpSink};
 use crate::storage::{ledger::Ledger, level_db::Storage};
+use crate::utils::encoding::decode_from_base64;
 
 pub struct SharedState {
     pub ledger: Mutex<Ledger>,
@@ -21,22 +22,23 @@ async fn read_message(reader: &mut BufReader<ReadHalf<TcpStream>>) -> io::Result
             if len == 0 {
                 return Ok(None);
             }
+
             let mut buffer = vec![0u8; len as usize];
             reader.read_exact(&mut buffer).await?;
 
-            let engine = engine::general_purpose::STANDARD;
-            match Engine::decode(&engine, &buffer) {
-                Ok(decoded_bytes) => match String::from_utf8(decoded_bytes) {
-                    Ok(message) => Ok(Some(message)),
-                    Err(_) => Err(io::Error::new(
+            let base64_str = match String::from_utf8(buffer) {
+                Ok(str) => str,
+                Err(_) => {
+                    return Err(io::Error::new(
                         io::ErrorKind::InvalidData,
-                        "Invalid UTF-8 sequence",
-                    )),
-                },
-                Err(_) => Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "Base64 decode error",
-                )),
+                        "Invalid UTF-8 sequence in base64 data",
+                    ))
+                }
+            };
+
+            match decode_from_base64(&base64_str) {
+                Ok(str) => Ok(Some(str)),
+                Err(e) => Err(io::Error::new(io::ErrorKind::InvalidData, e)),
             }
         }
         Err(ref e) if e.kind() == io::ErrorKind::UnexpectedEof => Ok(None),

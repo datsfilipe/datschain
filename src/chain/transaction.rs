@@ -1,11 +1,11 @@
-use bincode::{Decode, Encode};
+use serde::{Deserialize, Serialize};
 
 use crate::chain::{block_manager::BlockManager, blockchain::Blockchain};
 use crate::cryptography::hash::transform;
 use crate::utils::conversion::to_hex;
 use crate::utils::time::get_timestamp;
 
-#[derive(Debug, Clone, Encode, Decode)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Transaction {
     pub signer: Vec<u8>,
     pub from: Vec<u8>,

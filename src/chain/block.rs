@@ -1,4 +1,4 @@
-use bincode::{Decode, Encode};
+use serde::{Deserialize, Serialize};
 
 use crate::chain::block_manager::BlockManager;
 use crate::chain::blockchain::Blockchain;
@@ -7,13 +7,13 @@ use crate::cryptography::hash::transform;
 use crate::utils::conversion::to_hex;
 use crate::utils::time::get_timestamp;
 
-#[derive(Debug, Clone, Encode, Decode)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum BlockStatus {
     Unfinalized,
     Finalized,
 }
 
-#[derive(Debug, Clone, Encode, Decode)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Block {
     pub transactions: Vec<Transaction>,
     pub previous_hash: Vec<u8>,

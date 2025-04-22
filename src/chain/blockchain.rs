@@ -5,6 +5,7 @@ use crate::account::wallet::Wallet;
 use crate::chain::block::{Block, BlockStatus};
 use crate::client::network::SharedState;
 use crate::client::sink::safe_send;
+use crate::storage::ledger::LedgerValue;
 
 use super::block_manager::BlockManager;
 
@@ -103,14 +104,17 @@ impl Blockchain {
                             println!("Mined block {}", height);
                             let mut bm = block_manager.lock().await;
                             bm.remove_unfinalized_block(height);
-                            let message = state.ledger.lock().await.encode_value(&block_clone);
-                            match String::from_utf8(message) {
-                                Ok(utf8_message) => {
-                                    if let Err(e) = safe_send(&state.sink, &utf8_message).await {
-                                        eprintln!("Failed to send block: {}", e);
-                                    };
-                                }
-                                Err(e) => eprintln!("Failed to send block: {}", e),
+
+                            let parsed_block = &LedgerValue::Blocks(block_clone);
+                            let key = state.ledger.lock().await.get_key(&parsed_block);
+                            let message = state
+                                .ledger
+                                .lock()
+                                .await
+                                .format_entry_value(&key, &parsed_block);
+
+                            if let Err(e) = safe_send(&state.sink, &message).await {
+                                eprintln!("Failed to send block: {}", e);
                             };
                         }
                         Ok(false) => eprintln!("Proof‑of‑work failed for {}", height),

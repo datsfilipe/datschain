@@ -1,6 +1,6 @@
 use chain::blockchain::Blockchain;
 use std::{net::SocketAddr, sync::Arc};
-use tokio::{io, sync::Mutex};
+use tokio::sync::Mutex;
 
 mod account;
 mod chain;

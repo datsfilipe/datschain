@@ -9,7 +9,8 @@ pub fn create_connect_endpoint(
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     warp::path!("api" / "connect")
         .and(warp::post())
-        .and(warp::body::json())
+        .and(warp::body::content_length_limit(1024 * 16))
+        .and(warp::body::json::<String>())
         .and(warp::any().map(move || Arc::clone(&state)))
         .and_then(|request, state| process_connect_request(state, request))
         .with(warp::cors().allow_any_origin())
